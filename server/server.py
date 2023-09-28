@@ -4,6 +4,7 @@ import socket
 from threading import Thread
 import difflib
 import base64
+import shutil
 
 # Import server configuration
 # Load configuration from the JSON file
@@ -90,19 +91,25 @@ def handle_update(message):
         # Handle file deletion event
         server_path = os.path.join(SERVER_DIR, message["path"])
         if os.path.exists(server_path):
-            os.remove(server_path)
+            if message["structure"] == "dir":
+                shutil.rmtree(server_path)
+            else:
+                os.remove(server_path)
 
     elif message["event_type"] == "created":
         # Handle file creation event
         server_path = os.path.join(SERVER_DIR, message["path"])
-        
-        # Decode the Base64-encoded data received from the client
-        client_data_base64 = message["data"]
-        client_data_bytes = base64.b64decode(client_data_base64)
-        
-        # Write the client data to the server file
-        with open(server_path, 'wb') as server_file:
-            server_file.write(client_data_bytes)
+
+        if message["structure"] == "dir":
+            os.makedirs(server_path)
+        else:
+            # Decode the Base64-encoded data received from the client
+            client_data_base64 = message["data"]
+            client_data_bytes = base64.b64decode(client_data_base64)
+
+            # Write the decoded data to the file on the server
+            with open(server_path, 'wb') as server_file:
+                server_file.write(client_data_bytes)
 
     elif message["event_type"] == "moved":
         # Handle file move/rename event

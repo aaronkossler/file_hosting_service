@@ -78,20 +78,38 @@ class SyncHandler(FileSystemEventHandler):
         send_message_to_server(message)
 
     def on_deleted(self, event):
-        if event.is_directory:
-            return
         relative_path = os.path.relpath(event.src_path, CLIENT_DIR)
+        if event.is_directory:
+            message = {
+                "action": "update",
+                "path": relative_path,
+                "event_type": "deleted",
+                "structure": "dir"
+            }
+            send_message_to_server(message)
+            return
+
         message = {
             "action": "update",
             "path": relative_path,
-            "event_type": "deleted"
+            "event_type": "deleted",
+            "structure": "file"
         }
         send_message_to_server(message)
 
     def on_created(self, event):
-        if event.is_directory:
-            return
         relative_path = os.path.relpath(event.src_path, CLIENT_DIR)
+
+        if event.is_directory:
+            message = {
+                "action": "update",
+                "path": relative_path,
+                "event_type": "created",
+                "structure": "dir"
+            }
+            send_message_to_server(message)
+            return
+
         
         # Read the content of the created file as bytes
         data_bytes = self.read_bytes(event.src_path)
@@ -103,6 +121,7 @@ class SyncHandler(FileSystemEventHandler):
             "action": "update",
             "path": relative_path,
             "event_type": "created",
+            "structure": "file",
             "data": data_base64
         }
         recently_changed_files.append(event.src_path)
