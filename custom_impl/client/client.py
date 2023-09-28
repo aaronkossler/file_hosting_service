@@ -15,7 +15,7 @@ with open('client_config.json', 'r') as config_file:
 # Use the loaded configuration
 SERVER_HOST = config["server_host"]
 SERVER_PORT = config["server_port"]
-CLIENT_DIR = config["server_dir"]
+CLIENT_DIR = config["client_dir"]
 
 # Keep track of recently created/modified files to catch the successive modified event thrown by watchdog
 recently_changed_files = []
