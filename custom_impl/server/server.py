@@ -15,16 +15,31 @@ SERVER_HOST = config["server_host"]
 SERVER_PORT = config["server_port"]
 SERVER_DIR = config["server_dir"]
 
+# Define function to receive the complete message from the client in 1024 byte blocks
+def receive_client_message(client_socket):
+    data = b""
+    
+    # Concatenate data as long as there is data flow
+    while True:
+        chunk = client_socket.recv(1024)
+        if not chunk:
+            break
+        data += chunk
+
+    # Return decoded data
+    return data.decode()
+
 def handle_client(client_socket):
     try:
         while True:
-            data = client_socket.recv(1024)
+            data = receive_client_message(client_socket)
             if not data:
                 break
 
-            # Deserialize the received message
-            message = json.loads(data.decode())
+            # Load data as json
+            message = json.loads(data)
 
+            # Perform update handling
             if message["action"] == "update":
                 print(message["event_type"])
                 handle_update(message)
@@ -94,7 +109,6 @@ def handle_update(message):
         src_server_path = os.path.join(SERVER_DIR, message["src_path"])
         dest_server_path = os.path.join(SERVER_DIR, message["dest_path"])
         if os.path.exists(src_server_path):
-            # You may want to implement logic to move/rename the server file here
             os.rename(src_server_path, dest_server_path)
 
 if __name__ == "__main__":
