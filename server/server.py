@@ -16,10 +16,11 @@ SERVER_HOST = config["server_host"]
 SERVER_PORT = config["server_port"]
 SERVER_DIR = config["server_dir"]
 
+
 # Define function to receive the complete message from the client in 1024 byte blocks
 def receive_client_message(client_socket):
     data = b""
-    
+
     # Concatenate data as long as there is data flow
     while True:
         chunk = client_socket.recv(1024)
@@ -29,6 +30,7 @@ def receive_client_message(client_socket):
 
     # Return decoded data
     return data.decode()
+
 
 def handle_client(client_socket):
     try:
@@ -50,11 +52,12 @@ def handle_client(client_socket):
     finally:
         client_socket.close()
 
+
 def handle_update(message):
     if message["event_type"] == "modified":
         # Handle file modification event with differences
         server_path = os.path.join(SERVER_DIR, message["path"])
-        
+
         """ CURRENTLY NOT WORKING
         # Read the current content of the server file
         with open(server_path, 'r', encoding='utf-8') as server_file:
@@ -74,15 +77,15 @@ def handle_update(message):
         # Update the server file with the modified content
         with open(server_path, 'w', encoding='utf-8') as server_file:
             server_file.writelines(diff)"""
-        
+
         # Temporarily use the same logic as for file creation
         # Handle file creation event
         server_path = os.path.join(SERVER_DIR, message["path"])
-        
+
         # Decode the Base64-encoded data received from the client
         client_data_base64 = message["data"]
         client_data_bytes = base64.b64decode(client_data_base64)
-        
+
         # Write the client data to the server file
         with open(server_path, 'wb') as server_file:
             server_file.write(client_data_bytes)
@@ -116,7 +119,17 @@ def handle_update(message):
         src_server_path = os.path.join(SERVER_DIR, message["src_path"])
         dest_server_path = os.path.join(SERVER_DIR, message["dest_path"])
         if os.path.exists(src_server_path):
-            os.rename(src_server_path, dest_server_path)
+            if message["structure"] == "dir":
+                try:
+                    shutil.move(src_server_path, dest_server_path)
+                except:
+                    pass
+            else:
+                try:
+                    os.rename(src_server_path, dest_server_path)
+                except:
+                    pass
+
 
 if __name__ == "__main__":
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)

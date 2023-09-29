@@ -20,6 +20,7 @@ CLIENT_DIR = config["client_dir"]
 # Keep track of recently created/modified files to catch the successive modified event thrown by watchdog
 recently_changed_files = []
 
+
 class SyncHandler(FileSystemEventHandler):
     def on_modified(self, event):
         if event.is_directory:
@@ -79,70 +80,67 @@ class SyncHandler(FileSystemEventHandler):
 
     def on_deleted(self, event):
         relative_path = os.path.relpath(event.src_path, CLIENT_DIR)
-        if event.is_directory:
-            message = {
-                "action": "update",
-                "path": relative_path,
-                "event_type": "deleted",
-                "structure": "dir"
-            }
-            send_message_to_server(message)
-            return
 
         message = {
             "action": "update",
             "path": relative_path,
-            "event_type": "deleted",
-            "structure": "file"
+            "event_type": "deleted"
         }
+
+        if event.is_directory:
+            message["structure"] = "dir"
+        else:
+            message["structure"] = "file"
+
         send_message_to_server(message)
 
     def on_created(self, event):
         relative_path = os.path.relpath(event.src_path, CLIENT_DIR)
 
-        if event.is_directory:
-            message = {
-                "action": "update",
-                "path": relative_path,
-                "event_type": "created",
-                "structure": "dir"
-            }
-            send_message_to_server(message)
-            return
-
-        
-        # Read the content of the created file as bytes
-        data_bytes = self.read_bytes(event.src_path)
-        
-        # Encode the binary data as Base64
-        data_base64 = base64.b64encode(data_bytes).decode('utf-8')
-        
         message = {
             "action": "update",
             "path": relative_path,
-            "event_type": "created",
-            "structure": "file",
-            "data": data_base64
+            "event_type": "created"
         }
-        recently_changed_files.append(event.src_path)
+
+        if event.is_directory:
+            message["structure"] = "dir"
+        else:
+            # Read the content of the created file as bytes
+            data_bytes = self.read_bytes(event.src_path)
+
+            # Encode the binary data as Base64
+            data_base64 = base64.b64encode(data_bytes).decode('utf-8')
+
+            message["structure"] = "file"
+            message["data"] = data_base64
+
+            recently_changed_files.append(event.src_path)
+
         send_message_to_server(message)
 
     def on_moved(self, event):
-        if event.is_directory:
-            return
         src_relative_path = os.path.relpath(event.src_path, CLIENT_DIR)
         dest_relative_path = os.path.relpath(event.dest_path, CLIENT_DIR)
+
         message = {
             "action": "update",
             "src_path": src_relative_path,
             "dest_path": dest_relative_path,
             "event_type": "moved"
         }
+
+        if event.is_directory:
+            message["structure"] = "dir"
+        else:
+            message["structure"] = "file"
+
         send_message_to_server(message)
 
     def read_bytes(self, file_path):
         with open(file_path, 'rb') as file:
             return file.read()
+
 
 def send_message_to_server(message):
     print(message)
@@ -156,6 +154,7 @@ def send_message_to_server(message):
             client_socket.sendall(message_json.encode())
         except ConnectionError as e:
             print(f"Error connecting to server: {e}")
+
 
 if __name__ == "__main__":
     event_handler = SyncHandler()
