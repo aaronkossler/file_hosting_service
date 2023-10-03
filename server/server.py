@@ -5,6 +5,11 @@ from threading import Thread
 import difflib
 import base64
 import shutil
+import signal
+
+import sys
+sys.path.append('../')
+from resources.message_sending import send_message, receive_message
 
 # Import server configuration
 # Load configuration from the JSON file
@@ -16,44 +21,36 @@ SERVER_HOST = config["server_host"]
 SERVER_PORT = config["server_port"]
 SERVER_DIR = config["server_dir"]
 
+# Define a list to store active client sockets
+active_clients = []
 
-# Define function to receive the complete message from the client in 1024 byte blocks
-def receive_client_message(client_socket):
-    data = b""
-
-    # Concatenate data as long as there is data flow
-    while True:
-        chunk = client_socket.recv(1024)
-        if not chunk:
-            break
-        data += chunk
-
-    # Return decoded data
-    return data.decode()
-
-
+# Main function dedicated to each client
 def handle_client(client_socket):
     try:
+        active_clients.append(client_socket)
+        # Listen for message from client
         while True:
-            data = receive_client_message(client_socket)
+            data = receive_message(client_socket)
             if not data:
                 break
 
-            # Load data as json
             message = json.loads(data)
 
             # Perform update handling
             if message["action"] == "update":
-                print(message["event_type"])
                 handle_update(message)
 
     except json.JSONDecodeError:
         print("Error decoding JSON message")
+    except ConnectionResetError:
+        print("Client disconnected")
     finally:
         client_socket.close()
+        active_clients.remove(client_socket)
 
-
+# Define what to do on specific client messages
 def handle_update(message):
+    print(message["event_type"])
     if message["event_type"] == "modified":
         # Handle file modification event with differences
         server_path = os.path.join(SERVER_DIR, message["path"])
@@ -130,15 +127,39 @@ def handle_update(message):
                 except:
                     pass
 
+# If the server is closed, notify clients
+def send_shutdown_message_to_clients():
+    shutdown_message = {
+        "type": "serverMessage",
+        "action": "shutdown"
+    }
+    for client_socket in active_clients:
+        send_message(client_socket, shutdown_message)
+
+# Add function to forward the Ctrl+C event to
+def handle_server_termination(signum, frame):
+    print("Server terminated")
+    send_shutdown_message_to_clients()
+    sys.exit(0)
+
+# Register the signal handler for Ctrl+C
+signal.signal(signal.SIGINT, handle_server_termination)
 
 if __name__ == "__main__":
+    # Boot server
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server_socket.bind((SERVER_HOST, SERVER_PORT))
     server_socket.listen(5)
     print(f"Server listening on {SERVER_HOST}:{SERVER_PORT}")
 
-    while True:
-        client_socket, _ = server_socket.accept()
-        print(f"Accepted connection from {client_socket.getpeername()}")
-        client_handler = Thread(target=handle_client, args=(client_socket,))
-        client_handler.start()
+    # Accept new clients and hand each one over to its own thread
+    try:
+        while True:
+            client_socket, _ = server_socket.accept()
+            print(f"Accepted connection from {client_socket.getpeername()}")
+            client_handler = Thread(target=handle_client, args=(client_socket,))
+            client_handler.start()
+    except KeyboardInterrupt:
+        pass
+
+    print("Server terminated")

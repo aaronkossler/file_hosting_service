@@ -7,6 +7,10 @@ import base64
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 
+import sys
+sys.path.append('../')
+from resources.message_sending import send_message, receive_message
+
 # Import server configuration
 # Load configuration from the JSON file
 with open('client_config.json', 'r') as config_file:
@@ -20,8 +24,17 @@ CLIENT_DIR = config["client_dir"]
 # Keep track of recently created/modified files to catch the successive modified event thrown by watchdog
 recently_changed_files = []
 
+# Class responsible for detecting events and sending sync messages to server
+class EventHandler(FileSystemEventHandler):
+    # Set socket in constructor
+    def __init__(self, client_socket):
+        self.client_socket = client_socket
+        super().__init__()
 
-class SyncHandler(FileSystemEventHandler):
+        # Create a MessageHandler instance to receive messages from the server
+        self.message_handler = ServerMessageHandler(self.client_socket)
+
+    # MODIFIED logic
     def on_modified(self, event):
         if event.is_directory:
             return
@@ -30,43 +43,8 @@ class SyncHandler(FileSystemEventHandler):
             recently_changed_files.remove(event.src_path)
             return
 
-        """ # NOT WORKINGidea to use difflib to only save changes
-        # however, a storage of the original data would need to be done beforehand
         relative_path = os.path.relpath(event.src_path, CLIENT_DIR)
-        original_file_path = event.src_path + ".orig"
-    
-        # Calculate differences between the original and modified files
-        with open(original_file_path, 'r', encoding='utf-8') as orig_file:
-            orig_content = orig_file.readlines()
-
-        with open(event.src_path, 'rb') as mod_file:
-            mod_content = mod_file.readlines()
-
-        d = difflib.Differ()
-        diff = list(d.compare(orig_content, mod_content))
-        diff_str = '\n'.join(diff)
-
-        # Include the differences in the synchronization message
-        message = {
-            "action": "update",
-            "path": relative_path,
-            "event_type": "modified",
-            "data": diff_str  # Include the differences
-        }
-
-        # Update the original file with the modified content
-        with open(original_file_path, 'w', encoding='utf-8') as orig_file:
-            orig_file.writelines(mod_content)
-
-        send_message_to_server(message)"""
-
-        # Current workaround to just completely overwrite the file when it is modified
-        relative_path = os.path.relpath(event.src_path, CLIENT_DIR)
-
-        # Read the content of the modified file
         modified_content = self.read_bytes(event.src_path)
-
-        # Encode the modified content as Base64 and send it to the server
         data_base64 = base64.b64encode(modified_content).decode('utf-8')
 
         message = {
@@ -76,8 +54,9 @@ class SyncHandler(FileSystemEventHandler):
             "data": data_base64
         }
         recently_changed_files.append(event.src_path)
-        send_message_to_server(message)
+        send_message(self.client_socket, message)
 
+    # DELETE logic
     def on_deleted(self, event):
         relative_path = os.path.relpath(event.src_path, CLIENT_DIR)
 
@@ -92,8 +71,9 @@ class SyncHandler(FileSystemEventHandler):
         else:
             message["structure"] = "file"
 
-        send_message_to_server(message)
+        send_message(self.client_socket, message)
 
+    # CREATED logic
     def on_created(self, event):
         relative_path = os.path.relpath(event.src_path, CLIENT_DIR)
 
@@ -106,10 +86,7 @@ class SyncHandler(FileSystemEventHandler):
         if event.is_directory:
             message["structure"] = "dir"
         else:
-            # Read the content of the created file as bytes
             data_bytes = self.read_bytes(event.src_path)
-
-            # Encode the binary data as Base64
             data_base64 = base64.b64encode(data_bytes).decode('utf-8')
 
             message["structure"] = "file"
@@ -117,8 +94,9 @@ class SyncHandler(FileSystemEventHandler):
 
             recently_changed_files.append(event.src_path)
 
-        send_message_to_server(message)
+        send_message(self.client_socket, message)
 
+    # MOVED logic
     def on_moved(self, event):
         src_relative_path = os.path.relpath(event.src_path, CLIENT_DIR)
         dest_relative_path = os.path.relpath(event.dest_path, CLIENT_DIR)
@@ -135,35 +113,70 @@ class SyncHandler(FileSystemEventHandler):
         else:
             message["structure"] = "file"
 
-        send_message_to_server(message)
+        send_message(self.client_socket, message)
 
+    # Helper funciton to
     def read_bytes(self, file_path):
         with open(file_path, 'rb') as file:
             return file.read()
 
+    def listen_to_server_messages(self):
+        # Listen for server messages using the MessageHandler
+        self.message_handler.listen_to_server_messages()
 
-def send_message_to_server(message):
-    print(message)
-    # Create a socket connection to the server
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
+# Class responsible for handling server messages
+class ServerMessageHandler():
+    def __init__(self, client_socket):
+        self.client_socket = client_socket
+
+    # Listen and receive server messages
+    def listen_to_server_messages(self):
         try:
-            client_socket.connect((SERVER_HOST, SERVER_PORT))
-            # Serialize the message to JSON
-            message_json = json.dumps(message)
-            # Send the message to the server
-            client_socket.sendall(message_json.encode())
-        except ConnectionError as e:
-            print(f"Error connecting to server: {e}")
+            while True:
+                data = receive_message(self.client_socket)
+                if not data:
+                    break
 
+                message = json.loads(data)
+                self.handle_server_message(message)
+
+        except json.JSONDecodeError:
+            print("Error decoding JSON message")
+        except ConnectionResetError:
+            print("Server disconnected")
+
+    # Define functions that are used to react to server messages
+    def handle_server_message(self, message):
+        if message["action"] == "shutdown":
+            self.handle_server_shutdown()
+        # Other types of server messages can be added here
+
+    # Close client due to server shutdown
+    def handle_server_shutdown(self):
+        print("Server is shutting down. Closing client...")
+        self.client_socket.close()
+        sys.exit(0)
 
 if __name__ == "__main__":
-    event_handler = SyncHandler()
+    # Create socket and try to connect to the server
+    client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        client_socket.connect((SERVER_HOST, SERVER_PORT))
+        print(f"Connected to {SERVER_HOST}:{SERVER_PORT}")  
+    except ConnectionError as e:
+        print(f"Error connecting to server: {e}")
+        sys.exit(0)
+
+    # Create EventHandler and start listening to events
+    event_handler = EventHandler(client_socket)
     observer = Observer()
     observer.schedule(event_handler, path=CLIENT_DIR, recursive=True)
     observer.start()
 
     try:
         while True:
+            # Check for server messages periodically
+            event_handler.listen_to_server_messages()
             time.sleep(1)
     except KeyboardInterrupt:
         observer.stop()
