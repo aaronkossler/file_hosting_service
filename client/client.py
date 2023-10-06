@@ -4,9 +4,9 @@ import json
 import socket
 import difflib
 import base64
+import maskpass
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
-
 import sys
 sys.path.append('../')
 from resources.message_sending import send_message, receive_message
@@ -115,17 +115,57 @@ class EventHandler(FileSystemEventHandler):
 
         send_message(self.client_socket, message)
 
-    # Helper funciton to
+    # CLOSED logic
+    def on_closed(self, event):
+        self.on_modified(event)
+
+    # Helper function to read files
     def read_bytes(self, file_path):
         with open(file_path, 'rb') as file:
             return file.read()
 
     def listen_to_server_messages(self):
         # Listen for server messages using the MessageHandler
-        self.message_handler.listen_to_server_messages()
+        message = self.message_handler.listen_to_server_messages()
+        return message
+
+    # Class responsible for the Login
+    def on_login(self):
+        while True:
+            username = input("Enter username: ")
+            password = maskpass.askpass(prompt="Password: ", mask="*")
+
+            message = {
+                "action": "login",
+                "username": username,
+                "password": password
+            }
+            send_message(client_socket, message)
+
+            # Wait for Server to answer for 10 seconds
+            timeout = 10
+            timeout_start = time.time()
+            server_message = None
+            while time.time() < timeout_start + timeout:
+                # Listening for server messages
+                server_message = self.listen_to_server_messages()
+                time.sleep(1)
+                if server_message:
+                    break
+
+            if server_message:
+                # Print error message or login successful
+                print(server_message["text"])
+
+                if server_message["result"] == "successful":
+                    return True
+            else:
+                print("Server is not responding. Please try again.")
+                self.on_login()
+
 
 # Class responsible for handling server messages
-class ServerMessageHandler():
+class ServerMessageHandler:
     def __init__(self, client_socket):
         self.client_socket = client_socket
 
@@ -138,6 +178,10 @@ class ServerMessageHandler():
                     break
 
                 message = json.loads(data)
+
+                if message["action"] == "login":
+                    return message
+
                 self.handle_server_message(message)
 
         except json.JSONDecodeError:
@@ -167,17 +211,27 @@ if __name__ == "__main__":
         print(f"Error connecting to server: {e}")
         sys.exit(0)
 
-    # Create EventHandler and start listening to events
+    # Create EventHandler
     event_handler = EventHandler(client_socket)
-    observer = Observer()
-    observer.schedule(event_handler, path=CLIENT_DIR, recursive=True)
-    observer.start()
 
+    # Login
+    login = None
     try:
-        while True:
-            # Check for server messages periodically
-            event_handler.listen_to_server_messages()
-            time.sleep(1)
+        login = event_handler.on_login()
     except KeyboardInterrupt:
-        observer.stop()
-    observer.join()
+        pass
+
+    if login:
+        # Start listening to events
+        observer = Observer()
+        observer.schedule(event_handler, path=CLIENT_DIR, recursive=True)
+        observer.start()
+
+        try:
+            while True:
+                # Check for server messages periodically
+                event_handler.listen_to_server_messages()
+                time.sleep(1)
+        except KeyboardInterrupt:
+            observer.stop()
+        observer.join()

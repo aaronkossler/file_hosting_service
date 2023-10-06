@@ -6,6 +6,7 @@ import difflib
 import base64
 import shutil
 import signal
+import pandas as pd
 
 import sys
 sys.path.append('../')
@@ -24,6 +25,9 @@ SERVER_DIR = config["server_dir"]
 # Define a list to store active client sockets
 active_clients = []
 
+# Define a list to store clients, that are logged in
+logged_clients = []
+
 # Main function dedicated to each client
 def handle_client(client_socket):
     try:
@@ -37,8 +41,12 @@ def handle_client(client_socket):
             message = json.loads(data)
 
             # Perform update handling
-            if message["action"] == "update":
+            if message["action"] == "update" and client_socket in logged_clients:
                 handle_update(message)
+            # Perform login handling
+            elif message["action"] == "login":
+                handle_login(message, client_socket)
+
 
     except json.JSONDecodeError:
         print("Error decoding JSON message")
@@ -47,6 +55,10 @@ def handle_client(client_socket):
     finally:
         client_socket.close()
         active_clients.remove(client_socket)
+        try:
+            logged_clients.remove(client_socket)
+        except:
+            pass
 
 # Define what to do on specific client messages
 def handle_update(message):
@@ -126,6 +138,38 @@ def handle_update(message):
                     os.rename(src_server_path, dest_server_path)
                 except:
                     pass
+
+# Handle client login
+def handle_login(message, client_socket):
+    print(message["action"])
+
+    # Read users "database"
+    users = pd.read_csv("users.csv")
+
+    # Read credentials from message
+    username = message["username"]
+    password = message["password"]
+
+    # Default message
+    login_message = {
+        "type": "serverMessage",
+        "action": "login"
+    }
+
+    # Verify Credentials
+    if username in users["username"].unique():
+        if users[users["username"] == username]["password"].item() == password:
+            login_message["result"] = "successful"
+            login_message["text"] = "Logged in successfully"
+            logged_clients.append(client_socket)
+        else:
+            login_message["result"] = "failed"
+            login_message["text"] = "Password is wrong"
+    else:
+        login_message["result"] = "failed"
+        login_message["text"] = "Username does not exist"
+
+    send_message(client_socket, login_message)
 
 # If the server is closed, notify clients
 def send_shutdown_message_to_clients():
