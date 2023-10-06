@@ -53,6 +53,7 @@ def handle_client(client_socket):
     except ConnectionResetError:
         print("Client disconnected")
     finally:
+        print(f"{client_socket.getpeername()} disconnected")
         client_socket.close()
         active_clients.remove(client_socket)
         try:
