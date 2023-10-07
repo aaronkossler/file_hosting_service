@@ -56,10 +56,8 @@ def handle_client(client_socket):
         print(f"{client_socket.getpeername()} disconnected")
         client_socket.close()
         active_clients.remove(client_socket)
-        try:
+        if client_socket in logged_clients:
             logged_clients.remove(client_socket)
-        except:
-            pass
 
 # Define what to do on specific client messages
 def handle_update(message):
