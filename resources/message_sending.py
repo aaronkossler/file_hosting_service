@@ -3,11 +3,11 @@ import json
 # Helper script that defines functions for both sending and receiving messages on client and server side
 
 def send_message(socket, message):
-        print("sending:", message)
-        # Serialize the message to JSON
-        message_json = dump_message(message)
-        # Send the message to the server
-        socket.sendall(message_json.encode())
+    print("sending:", message)
+    # Serialize the message to JSON
+    message_json = dump_message(message)
+    # Send the message to the server
+    socket.sendall(message_json.encode())
 
 def dump_message(message):
     # Dump message and add delimiter
