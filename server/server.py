@@ -26,7 +26,7 @@ SERVER_DIR = config["server_dir"]
 active_clients = []
 
 # Define a list to store clients, that are logged in
-logged_clients = []
+logged_clients = {}
 
 # Main function dedicated to each client
 def handle_client(client_socket):
@@ -42,7 +42,7 @@ def handle_client(client_socket):
 
             # Perform update handling
             if message["action"] == "update" and client_socket in logged_clients:
-                handle_update(message)
+                handle_update(message, client_socket)
             # Perform login handling
             elif message["action"] == "login":
                 handle_login(message, client_socket)
@@ -57,16 +57,17 @@ def handle_client(client_socket):
         client_socket.close()
         active_clients.remove(client_socket)
         if client_socket in logged_clients:
-            logged_clients.remove(client_socket)
+            del logged_clients[client_socket]
 
 # Define what to do on specific client messages
-def handle_update(message):
+def handle_update(message, client_socket):
     print(message["event_type"])
     if message["event_type"] == "modified":
         # Handle file modification event with differences
-        server_path = os.path.join(SERVER_DIR, message["path"])
 
         """ CURRENTLY NOT WORKING
+        server_path = os.path.join(SERVER_DIR, message["path"])
+
         # Read the current content of the server file
         with open(server_path, 'r', encoding='utf-8') as server_file:
             server_content = server_file.readlines()
@@ -88,55 +89,70 @@ def handle_update(message):
 
         # Temporarily use the same logic as for file creation
         # Handle file creation event
-        server_path = os.path.join(SERVER_DIR, message["path"])
+        if check_access(message["path"], client_socket):
+            server_path = os.path.join(SERVER_DIR, message["path"])
 
-        # Decode the Base64-encoded data received from the client
-        client_data_base64 = message["data"]
-        client_data_bytes = base64.b64decode(client_data_base64)
-
-        # Write the client data to the server file
-        with open(server_path, 'wb') as server_file:
-            server_file.write(client_data_bytes)
-
-    elif message["event_type"] == "deleted":
-        # Handle file deletion event
-        server_path = os.path.join(SERVER_DIR, message["path"])
-        if os.path.exists(server_path):
-            if message["structure"] == "dir":
-                shutil.rmtree(server_path)
-            else:
-                os.remove(server_path)
-
-    elif message["event_type"] == "created":
-        # Handle file creation event
-        server_path = os.path.join(SERVER_DIR, message["path"])
-
-        if message["structure"] == "dir":
-            os.makedirs(server_path)
-        else:
             # Decode the Base64-encoded data received from the client
             client_data_base64 = message["data"]
             client_data_bytes = base64.b64decode(client_data_base64)
 
-            # Write the decoded data to the file on the server
+            # Write the client data to the server file
             with open(server_path, 'wb') as server_file:
                 server_file.write(client_data_bytes)
+        else:
+            print("You are not allowed to modify files in this folder")
+
+    elif message["event_type"] == "deleted":
+        # Handle file deletion event
+        if check_access(message["path"], client_socket):
+            server_path = os.path.join(SERVER_DIR, message["path"])
+            if os.path.exists(server_path):
+                if message["structure"] == "dir":
+                    shutil.rmtree(server_path)
+                else:
+                    os.remove(server_path)
+        else:
+            print("You are not allowed to delete files in this folder")
+
+    elif message["event_type"] == "created":
+        # Handle file creation event
+        if check_access(message["path"], client_socket):
+            server_path = os.path.join(SERVER_DIR, message["path"])
+
+            if message["structure"] == "dir":
+                os.makedirs(server_path)
+            else:
+                # Decode the Base64-encoded data received from the client
+                client_data_base64 = message["data"]
+                client_data_bytes = base64.b64decode(client_data_base64)
+
+                # Write the decoded data to the file on the server
+                with open(server_path, 'wb') as server_file:
+                    server_file.write(client_data_bytes)
+        else:
+            print("You are not allowed to create files in this folder")
 
     elif message["event_type"] == "moved":
         # Handle file move/rename event
-        src_server_path = os.path.join(SERVER_DIR, message["src_path"])
-        dest_server_path = os.path.join(SERVER_DIR, message["dest_path"])
-        if os.path.exists(src_server_path):
-            if message["structure"] == "dir":
-                try:
-                    shutil.move(src_server_path, dest_server_path)
-                except:
-                    pass
+        if check_access(message["src_path"], client_socket):
+            if check_access(message["dest_path"], client_socket):
+                src_server_path = os.path.join(SERVER_DIR, message["src_path"])
+                dest_server_path = os.path.join(SERVER_DIR, message["dest_path"])
+                if os.path.exists(src_server_path):
+                    if message["structure"] == "dir":
+                        try:
+                            shutil.move(src_server_path, dest_server_path)
+                        except:
+                            pass
+                    else:
+                        try:
+                            os.rename(src_server_path, dest_server_path)
+                        except:
+                            pass
             else:
-                try:
-                    os.rename(src_server_path, dest_server_path)
-                except:
-                    pass
+                print("You are not allowed to move files to this folder")
+        else:
+            print("You are not allowed to move files from this folder")
 
 # Handle client login
 def handle_login(message, client_socket):
@@ -157,10 +173,14 @@ def handle_login(message, client_socket):
 
     # Verify Credentials
     if username in users["username"].unique():
-        if users[users["username"] == username]["password"].item() == password:
+        saved_password = users[users["username"] == username]["password"].item()
+        if saved_password == password or pd.isnull(saved_password):
             login_message["result"] = "successful"
             login_message["text"] = "Logged in successfully"
-            logged_clients.append(client_socket)
+            logged_clients[client_socket] =  username
+            userpath = os.path.join(SERVER_DIR, username)
+            if not os.path.isdir(userpath):
+                os.makedirs(userpath)
         else:
             login_message["result"] = "failed"
             login_message["text"] = "Password is wrong"
@@ -187,6 +207,14 @@ def handle_server_termination(signum, frame):
 
 # Register the signal handler for Ctrl+C
 signal.signal(signal.SIGINT, handle_server_termination)
+
+# Helper function to check if client has access to path
+def check_access(path, client_socket):
+    username = logged_clients[client_socket]
+    if path[:len(username)] == username:
+        return True
+    else:
+        return False
 
 if __name__ == "__main__":
     # Boot server

@@ -158,10 +158,12 @@ class EventHandler(FileSystemEventHandler):
                 print(server_message["text"])
 
                 if server_message["result"] == "successful":
+                    userpath = os.path.join(CLIENT_DIR, username)
+                    if not os.path.isdir(userpath):
+                        os.makedirs(userpath)
                     return True
             else:
                 print("Server is not responding. Please try again.")
-                self.on_login()
 
 
 # Class responsible for handling server messages
