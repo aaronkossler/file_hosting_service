@@ -1,10 +1,13 @@
 #!/bin/bash
 
-cd client/data
+#Script can be changed to test for other users
+# cd client/data/anonymous
+# cd client/data/sza
+cd client/data/sar
 rm -r ./*
 
 IFS=$'\n'
-for cmds in `cat ../../cmd`
+for cmds in `cat ../../../cmd`
 do
         read -p "Press Enter to continue..."
 
