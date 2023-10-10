@@ -54,6 +54,7 @@ class Client(MessageListener):
         self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.message_handler = ServerMessageNotifier(self.client_socket)
         self.event_handler = EventHandler(self.client_socket, CLIENT_DIR)
+        self.login_response = False
         self.logged_in = False
 
     # Handle server messages
@@ -88,14 +89,17 @@ class Client(MessageListener):
             # Wait for Server to answer for 10 seconds
             timeout = 10
             timeout_start = time.time()
-            while time.time() < timeout_start + timeout and not self.logged_in:
+            while time.time() < timeout_start + timeout and not self.logged_in and not self.login_response:
                 time.sleep(1)
 
-            if not self.logged_in:
+            if not self.login_response and not self.logged_in:
                 print("Server is not responding. Please try again.")
+            elif not self.logged_in:
+                self.login_response = False
 
     def handle_login_message(self, message):
         print(message["text"])
+        self.login_response = True
         if message["result"] == "successful":
             self.logged_in = True
 
