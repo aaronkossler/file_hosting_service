@@ -6,7 +6,6 @@ import difflib
 import base64
 import shutil
 import signal
-import maskpass
 import pandas as pd
 
 import sys

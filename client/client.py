@@ -6,6 +6,7 @@ import difflib
 import base64
 import maskpass
 import threading
+import argparse
 from watchdog.observers import Observer
 from components.abstract_message_listener import MessageListener
 from components.event_handler import EventHandler
@@ -24,6 +25,28 @@ with open('client_config.json', 'r') as config_file:
 SERVER_HOST = config["server_host"]
 SERVER_PORT = config["server_port"]
 CLIENT_DIR = config["client_dir"]
+
+def parse_command_line_args():
+    global SERVER_HOST, SERVER_PORT, CLIENT_DIR
+    parser = argparse.ArgumentParser(description="Client replicating Dropbox funcitonality by syncing files and folders in the background")
+    
+    # Add command-line arguments to overwrite configuration values
+    parser.add_argument('--server-host', help='Server host address')
+    parser.add_argument('--server-port', type=int, help='Server port number')
+    parser.add_argument('--client-dir', help='Client directory path')
+
+    args = parser.parse_args()
+
+    # Update the configuration based on the command-line arguments
+    if args.server_host:
+        SERVER_HOST = args.server_host
+    if args.server_port:
+        SERVER_PORT = args.server_port
+    if args.client_dir and os.path.exists(args.client_dir):
+        CLIENT_DIR = args.client_dir
+    else:
+        print("The client directory does not exist.")
+        sys.exit(0)
 
 # Class responsible for the Client instance
 class Client(MessageListener):
@@ -110,6 +133,8 @@ class Client(MessageListener):
         sys.exit(0)
 
 if __name__ == "__main__":
+    # Parse cmd line args
+    parse_command_line_args()
     # Create and start Client instance
     client = Client()
     client.run()
