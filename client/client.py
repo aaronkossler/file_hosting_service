@@ -158,10 +158,7 @@ class EventHandler(FileSystemEventHandler):
                 print(server_message["text"])
 
                 if server_message["result"] == "successful":
-                    userpath = os.path.join(CLIENT_DIR, username)
-                    if not os.path.isdir(userpath):
-                        os.makedirs(userpath)
-                    return userpath
+                    return True
             else:
                 print("Server is not responding. Please try again.")
 
@@ -217,16 +214,16 @@ if __name__ == "__main__":
     event_handler = EventHandler(client_socket)
 
     # Login
-    userpath = None
+    login = None
     try:
-        userpath = event_handler.on_login()
+        login = event_handler.on_login()
     except KeyboardInterrupt:
         pass
 
-    if userpath:
+    if login:
         # Start listening to events
         observer = Observer()
-        observer.schedule(event_handler, path=userpath, recursive=True)
+        observer.schedule(event_handler, path=CLIENT_DIR, recursive=True)
         observer.start()
 
         try:
