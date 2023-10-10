@@ -47,7 +47,6 @@ def handle_client(client_socket):
             elif message["action"] == "login":
                 handle_login(message, client_socket)
 
-
     except json.JSONDecodeError:
         print("Error decoding JSON message")
     except ConnectionResetError:
@@ -150,7 +149,7 @@ def handle_login(message, client_socket):
     username = message["username"]
     password = message["password"]
 
-    # Default message
+    # Default login response
     login_message = {
         "type": "serverMessage",
         "action": "login"
