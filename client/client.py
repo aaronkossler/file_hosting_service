@@ -7,6 +7,7 @@ import base64
 import maskpass
 import threading
 import argparse
+import signal
 from watchdog.observers import Observer
 from components.abstract_message_listener import MessageListener
 from components.event_handler import EventHandler
@@ -28,7 +29,8 @@ CLIENT_DIR = config["client_dir"]
 
 def parse_command_line_args():
     global SERVER_HOST, SERVER_PORT, CLIENT_DIR
-    parser = argparse.ArgumentParser(description="Client replicating Dropbox funcitonality by syncing files and folders in the background")
+    parser = argparse.ArgumentParser(description="Client replicating Dropbox funcitonality "
+                                                 "by syncing files and folders in the background")
     
     # Add command-line arguments to overwrite configuration values
     parser.add_argument('--server-host', help='Server host address')
@@ -56,6 +58,8 @@ class Client(MessageListener):
         self.event_handler = EventHandler(self.client_socket, CLIENT_DIR)
         self.login_response = False
         self.logged_in = False
+        # Register the signal handler for Ctrl+C
+        signal.signal(signal.SIGINT, self.shutdown)
 
     # Handle server messages
     def notify_server_message(self, message):
@@ -130,15 +134,17 @@ class Client(MessageListener):
         listen_thread.join()
 
     # Close client on server disconnect
-    def shutdown(self):
-        print("Server is shutting down. Closing client...")
+    def shutdown(self, signum=None, frame=None):
+        print("Closing client...")
         self.message_handler.stop_listening()
         self.client_socket.close()
         sys.exit(0)
 
+
 if __name__ == "__main__":
     # Parse cmd line args
     parse_command_line_args()
-    # Create and start Client instance
+    # Create Client instance
     client = Client()
+    # Start Client instance
     client.run()

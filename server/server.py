@@ -192,14 +192,6 @@ def handle_server_termination(signum, frame):
 # Register the signal handler for Ctrl+C
 signal.signal(signal.SIGINT, handle_server_termination)
 
-# Helper function to check if client has access to path
-def check_access(path, client_socket):
-    username = logged_clients[client_socket]
-    if path[:len(username)] == username:
-        return True
-    else:
-        return False
-
 if __name__ == "__main__":
     # Boot server
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
