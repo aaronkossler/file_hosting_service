@@ -2,8 +2,6 @@ import os
 import time
 import json
 import socket
-import difflib
-import base64
 import maskpass
 import threading
 import argparse
