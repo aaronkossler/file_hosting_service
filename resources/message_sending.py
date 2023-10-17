@@ -1,9 +1,11 @@
 import json
+import os
 
 # Helper script that defines functions for both sending and receiving messages on client and server side
 
 def send_message(socket, message):
-    print("sending:", message)
+    if os.environ["DEBUG"] == "on":
+        print("sending:", message)
     # Serialize the message to JSON
     message_json = dump_message(message)
     # Send the message to the server

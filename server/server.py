@@ -6,6 +6,7 @@ import base64
 import shutil
 import signal
 import pandas as pd
+import argparse
 
 import sys
 sys.path.append('../')
@@ -26,6 +27,34 @@ active_clients = []
 
 # Define a list to store clients, that are logged in
 logged_clients = {}
+
+def parse_command_line_args():
+    global SERVER_HOST, SERVER_PORT, SERVER_DIR
+    parser = argparse.ArgumentParser(description="Client replicating Dropbox funcitonality by syncing files and folders in the background")
+    
+    # Add command-line arguments to overwrite configuration values
+    parser.add_argument('--server-host', help='Server host address')
+    parser.add_argument('--server-port', type=int, help='Server port number')
+    parser.add_argument('--debug', action='store_true', help='Decide whether sent messages should be logged for debugging')
+    parser.add_argument('--server-dir', help='Server directory path')
+
+    args = parser.parse_args()
+
+    if args.debug:
+        os.environ["DEBUG"] = "on"
+    else: 
+        os.environ["DEBUG"] = "off"
+
+    # Update the configuration based on the command-line arguments
+    if args.server_host:
+        SERVER_HOST = args.server_host
+    if args.server_port:
+        SERVER_PORT = args.server_port
+    if args.server_dir and os.path.exists(args.server_dir):
+        SERVER_DIR = args.client_dir
+    elif not os.path.exists(SERVER_DIR):
+        print("The server directory does not exist.")
+        sys.exit(0)
 
 # Main function dedicated to each client
 def handle_client(client_socket):
@@ -59,7 +88,8 @@ def handle_client(client_socket):
 
 # Define what to do on specific client messages
 def handle_update(message, client_socket):
-    print(message["event_type"])
+    if os.environ["DEBUG"] == "on": 
+        print(message["event_type"])
     if message["event_type"] == "modified":
         # Handle file modification event with differences maybe to be added (?)
 
@@ -117,7 +147,8 @@ def handle_update(message, client_socket):
 
 # Handle client login
 def handle_login(message, client_socket):
-    print(message["action"])
+    if os.environ["DEBUG"] == "on": 
+        print(message["action"])
 
     # Read users "database"
     users = pd.read_csv("users.csv")
@@ -138,10 +169,11 @@ def handle_login(message, client_socket):
         if saved_password == password or pd.isnull(saved_password):
             login_message["result"] = "successful"
             login_message["text"] = "Logged in successfully"
-            logged_clients[client_socket] =  username
+            logged_clients[client_socket] = username
             userpath = os.path.join(SERVER_DIR, username)
             if not os.path.isdir(userpath):
                 os.makedirs(userpath)
+            print(f"Login successful by {client_socket.getpeername()}")
         else:
             login_message["result"] = "failed"
             login_message["text"] = "Password is wrong"
@@ -157,6 +189,7 @@ def send_shutdown_message_to_clients():
         "type": "serverMessage",
         "action": "shutdown"
     }
+
     for client_socket in active_clients:
         send_message(client_socket, shutdown_message)
 
@@ -178,11 +211,21 @@ def check_access(path, client_socket):
         return False
 
 if __name__ == "__main__":
+    # Parse cmd line args
+    parse_command_line_args()
+
     # Boot server
-    server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server_socket.bind((SERVER_HOST, SERVER_PORT))
-    server_socket.listen(5)
-    print(f"Server listening on {SERVER_HOST}:{SERVER_PORT}")
+    try:
+        server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        server_socket.bind((SERVER_HOST, SERVER_PORT))
+        server_socket.listen(5)
+        print(f"Server listening on {SERVER_HOST}:{SERVER_PORT}")
+    except OSError as e:
+        print(f"Error binding to {SERVER_HOST}:{SERVER_PORT}: {e}")
+        sys.exit(1)
+    except Exception as e:
+        print(f"An unexpected error occurred: {e}")
+        sys.exit(1)
 
     # Accept new clients and hand each one over to its own thread
     try:
