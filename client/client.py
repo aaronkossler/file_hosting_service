@@ -2,8 +2,6 @@ import os
 import time
 import json
 import socket
-import difflib
-import base64
 import maskpass
 import threading
 import argparse
@@ -35,9 +33,15 @@ def parse_command_line_args():
     # Add command-line arguments to overwrite configuration values
     parser.add_argument('--server-host', help='Server host address')
     parser.add_argument('--server-port', type=int, help='Server port number')
+    parser.add_argument('--debug', action='store_true', help='Decide whether sent messages should be logged for debugging')
     parser.add_argument('--client-dir', help='Client directory path')
 
     args = parser.parse_args()
+
+    if args.debug:
+        os.environ["DEBUG"] = "on"
+    else: 
+        os.environ["DEBUG"] = "off"
 
     # Update the configuration based on the command-line arguments
     if args.server_host:
@@ -46,7 +50,7 @@ def parse_command_line_args():
         SERVER_PORT = args.server_port
     if args.client_dir and os.path.exists(args.client_dir):
         CLIENT_DIR = args.client_dir
-    else:
+    elif not os.path.exists(CLIENT_DIR):
         print("The client directory does not exist.")
         sys.exit(0)
 
@@ -58,14 +62,15 @@ class Client(MessageListener):
         self.event_handler = EventHandler(self.client_socket, CLIENT_DIR)
         self.login_response = False
         self.logged_in = False
+        self.disconnected = False
         # Register the signal handler for Ctrl+C
         signal.signal(signal.SIGINT, self.shutdown)
 
     # Handle server messages
     def notify_server_message(self, message):
-        if message["action"] == "shutdown":
+        if message["action"] == "shutdown" and self.logged_in:
             self.shutdown()
-        elif message["action"] == "login":
+        elif message["action"] == "login" or not self.logged_in:
             self.handle_login_message(message)
 
     # Connect to server
@@ -79,7 +84,7 @@ class Client(MessageListener):
 
     # Login logic
     def login(self):
-        while not self.logged_in:
+        while not self.logged_in and not self.disconnected:
             username = input("Enter username: ")
             password = maskpass.askpass(prompt="Password: ", mask="*")
 
@@ -102,10 +107,15 @@ class Client(MessageListener):
                 self.login_response = False
 
     def handle_login_message(self, message):
-        print(message["text"])
-        self.login_response = True
-        if message["result"] == "successful":
-            self.logged_in = True
+        if message["action"] == "login":
+            print(message["text"])
+            self.login_response = True
+            if message["result"] == "successful":
+                self.logged_in = True
+        elif message["action"] == "shutdown":
+            self.disconnected = True
+            print("Server disconnected. Aborting login process...")
+            os._exit(1)
 
     # Start observing to events
     def start(self):
