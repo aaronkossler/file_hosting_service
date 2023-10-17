@@ -1,9 +1,7 @@
 #!/bin/bash
 
 #Script can be changed to test for other users
-# cd client/data/anonymous
-# cd client/data/sza
-cd client/data/sar
+cd client/data
 rm -r ./*
 
 IFS=$'\n'

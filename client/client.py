@@ -27,7 +27,7 @@ CLIENT_DIR = config["client_dir"]
 
 def parse_command_line_args():
     global SERVER_HOST, SERVER_PORT, CLIENT_DIR
-    parser = argparse.ArgumentParser(description="Client replicating Dropbox funcitonality "
+    parser = argparse.ArgumentParser(description="Client replicating Dropbox functionality "
                                                  "by syncing files and folders in the background")
     
     # Add command-line arguments to overwrite configuration values
@@ -86,7 +86,10 @@ class Client(MessageListener):
     def login(self):
         while not self.logged_in and not self.disconnected:
             username = input("Enter username: ")
-            password = maskpass.askpass(prompt="Password: ", mask="*")
+            try:
+                password = maskpass.askpass(prompt="Password: ", mask="*")
+            except KeyboardInterrupt:
+                self.shutdown()
 
             message = {
                 "action": "login",
