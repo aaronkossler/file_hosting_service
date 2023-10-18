@@ -67,7 +67,7 @@ class Client(MessageListener):
     # Handle server messages
     def notify_server_message(self, message):
         if message["action"] == "shutdown" and self.logged_in:
-            self.shutdown("Server is disconnected. Closing client...")
+            self.shutdown("Server disconnected. Closing client...")
         elif message["action"] == "login" or not self.logged_in:
             self.handle_login_message(message)
 
@@ -95,7 +95,7 @@ class Client(MessageListener):
             if not self.disconnected:
                 send_message(self.client_socket, message)
             else:
-                self.shutdown("Server is disconnected. Aborting login...")
+                self.shutdown("Server disconnected. Aborting login...")
 
             # Wait for Server to answer for 10 seconds
             timeout = 10
