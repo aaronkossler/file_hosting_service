@@ -192,6 +192,7 @@ def send_shutdown_message_to_clients():
 
     for client_socket in active_clients:
         send_message(client_socket, shutdown_message)
+        client_socket.close()
 
 # Add function to forward the Ctrl+C event to
 def handle_server_termination(signum, frame):
@@ -225,6 +226,7 @@ if __name__ == "__main__":
             client_socket, _ = server_socket.accept()
             print(f"Accepted connection from {client_socket.getpeername()}")
             client_handler = Thread(target=handle_client, args=(client_socket,))
+            client_handler.daemon = True
             client_handler.start()
     except KeyboardInterrupt:
         pass

@@ -67,7 +67,7 @@ class Client(MessageListener):
     # Handle server messages
     def notify_server_message(self, message):
         if message["action"] == "shutdown" and self.logged_in:
-            self.shutdown()
+            self.shutdown("Server is disconnected. Closing client...")
         elif message["action"] == "login" or not self.logged_in:
             self.handle_login_message(message)
 
@@ -82,7 +82,7 @@ class Client(MessageListener):
 
     # Login logic
     def login(self):
-        while not self.logged_in and not self.disconnected:
+        while not self.logged_in:
             username = input("Enter username: ")
             password = maskpass.askpass(prompt="Password: ", mask="*")
 
@@ -91,7 +91,11 @@ class Client(MessageListener):
                 "username": username,
                 "password": password
             }
-            send_message(self.client_socket, message)
+
+            if not self.disconnected:
+                send_message(self.client_socket, message)
+            else:
+                self.shutdown("Server is disconnected. Aborting login...")
 
             # Wait for Server to answer for 10 seconds
             timeout = 10
@@ -111,8 +115,7 @@ class Client(MessageListener):
             if message["result"] == "successful":
                 self.logged_in = True
         elif message["action"] == "shutdown":
-            print("Server disconnected. Aborting login process...")
-            self.login_shutdown()
+            self.disconnected = True
 
     # Start observing to events
     def start(self):
@@ -133,30 +136,23 @@ class Client(MessageListener):
 
         # Start listening to events and server messages in a separate thread
         listen_thread = threading.Thread(target=self.start)
+        listen_thread.daemon = True
         listen_thread.start()
 
         # Login
         try:
             self.login()
         except KeyboardInterrupt:
-            print("Closing client...")
-            self.login_shutdown()
-
-        # Register the signal handler for Ctrl+C
-        signal.signal(signal.SIGINT, self.shutdown)
+            self.shutdown("Closing client...")
 
         listen_thread.join()
 
-    # Close client on server disconnect
-    def shutdown(self, signum=None, frame=None):
-        print("Closing client...")
+    # Close client
+    def shutdown(self, message):
+        print(message)
         self.message_handler.stop_listening()
         self.client_socket.close()
         sys.exit(0)
-
-    def login_shutdown(self):
-        self.disconnected = True
-        os._exit(1)
 
 if __name__ == "__main__":
     # Parse cmd line args
