@@ -5,7 +5,7 @@ cd client/data
 rm -r ./*
 
 IFS=$'\n'
-for cmds in `cat ../../../cmd`
+for cmds in `cat ../../cmd`
 do
         read -p "Press Enter to continue..."
 

@@ -63,8 +63,6 @@ class Client(MessageListener):
         self.login_response = False
         self.logged_in = False
         self.disconnected = False
-        # Register the signal handler for Ctrl+C
-        signal.signal(signal.SIGINT, self.shutdown)
 
     # Handle server messages
     def notify_server_message(self, message):
@@ -86,10 +84,7 @@ class Client(MessageListener):
     def login(self):
         while not self.logged_in and not self.disconnected:
             username = input("Enter username: ")
-            try:
-                password = maskpass.askpass(prompt="Password: ", mask="*")
-            except KeyboardInterrupt:
-                self.shutdown()
+            password = maskpass.askpass(prompt="Password: ", mask="*")
 
             message = {
                 "action": "login",
@@ -116,9 +111,8 @@ class Client(MessageListener):
             if message["result"] == "successful":
                 self.logged_in = True
         elif message["action"] == "shutdown":
-            self.disconnected = True
             print("Server disconnected. Aborting login process...")
-            os._exit(1)
+            self.login_shutdown()
 
     # Start observing to events
     def start(self):
@@ -142,7 +136,14 @@ class Client(MessageListener):
         listen_thread.start()
 
         # Login
-        self.login()
+        try:
+            self.login()
+        except KeyboardInterrupt:
+            print("Closing client...")
+            self.login_shutdown()
+
+        # Register the signal handler for Ctrl+C
+        signal.signal(signal.SIGINT, self.shutdown)
 
         listen_thread.join()
 
@@ -153,6 +154,9 @@ class Client(MessageListener):
         self.client_socket.close()
         sys.exit(0)
 
+    def login_shutdown(self):
+        self.disconnected = True
+        os._exit(1)
 
 if __name__ == "__main__":
     # Parse cmd line args
