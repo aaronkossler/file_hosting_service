@@ -134,18 +134,18 @@ class Client(MessageListener):
         # Connect to the server
         self.connect()
 
-        # Start listening to events and server messages in a separate thread
-        listen_thread = threading.Thread(target=self.start)
-        listen_thread.daemon = True
-        listen_thread.start()
-
-        # Login
         try:
+            # Start listening to events and server messages in a separate thread
+            listen_thread = threading.Thread(target=self.start)
+            listen_thread.daemon = True
+            listen_thread.start()
+
+            # Login
             self.login()
+
+            listen_thread.join()
         except KeyboardInterrupt:
             self.shutdown("Closing client...")
-
-        listen_thread.join()
 
     # Close client
     def shutdown(self, message):
