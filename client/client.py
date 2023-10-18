@@ -50,7 +50,8 @@ def parse_command_line_args():
         SERVER_PORT = args.server_port
     if args.client_dir and os.path.exists(args.client_dir):
         CLIENT_DIR = args.client_dir
-    elif not os.path.exists(CLIENT_DIR):
+    elif ((args.client_dir and not os.path.exists(args.client_dir)) or
+          (not args.client_dir and not os.path.exists(CLIENT_DIR))):
         print("The client directory does not exist.")
         sys.exit(0)
 
