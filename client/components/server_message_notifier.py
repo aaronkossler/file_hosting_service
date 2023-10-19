@@ -28,12 +28,11 @@ class ServerMessageNotifier:
                 data = receive_message(self.client_socket)
                 if not data:
                     break
-
-                message = json.loads(data)
-                self.notify_listeners(message)
-
-        except json.JSONDecodeError:
-            print("Error decoding JSON message")
+                try:
+                    message = json.loads(data)
+                    self.notify_listeners(message)
+                except json.JSONDecodeError:
+                    print("Error decoding JSON message")
         except ConnectionResetError:
             print("Server disconnected")
         except KeyboardInterrupt:
