@@ -67,17 +67,18 @@ def handle_client(client_socket):
             if not data:
                 break
 
-            message = json.loads(data)
+            try:
+                message = json.loads(data)
 
-            # Perform update handling
-            if message["action"] == "update" and client_socket in logged_clients:
-                handle_update(message, client_socket)
-            # Perform login handling
-            elif message["action"] == "login":
-                handle_login(message, client_socket)
+                # Perform update handling
+                if message["action"] == "update" and client_socket in logged_clients:
+                    handle_update(message, client_socket)
+                # Perform login handling
+                elif message["action"] == "login":
+                    handle_login(message, client_socket)
+            except json.JSONDecodeError:
+                print("Error decoding JSON message")
 
-    except json.JSONDecodeError:
-        print("Error decoding JSON message")
     except ConnectionResetError:
         print("Client disconnected")
     finally:
