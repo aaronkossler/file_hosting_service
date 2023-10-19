@@ -27,11 +27,18 @@ def receive_message(client_socket):
             break
         data += chunk
 
-    # Split the received data by the delimiter
-    parts = data.split(b'\n')
+        # Split the received data by the delimiter
+        parts = data.split(b'\n')
+
+        for i in range(len(parts) - 1):
+            messages.append(parts[i])
+
+        if b'\n' in chunk:
+            data = parts[-1]
+            break
 
     # Process and decode each individual message
-    decoded_messages = [message.decode() for message in parts]
+    decoded_messages = [message.decode() for message in messages]
 
     return decoded_messages
 
