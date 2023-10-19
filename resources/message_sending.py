@@ -35,6 +35,8 @@ def receive_message(client_socket):
 
         if b'\n' in chunk:
             data = parts[-1]
+        
+        if chunk.endswith(b'\n'):
             break
 
     # Process and decode each individual message
