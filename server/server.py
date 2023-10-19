@@ -66,16 +66,20 @@ def handle_client(client_socket):
             data = receive_message(client_socket)
             if not data:
                 break
-
             try:
-                message = json.loads(data)
+                print(data)
+                messages = []
+                for data_item in data:
+                    message = json.loads(data_item)
+                    messages.append(message)
 
-                # Perform update handling
-                if message["action"] == "update" and client_socket in logged_clients:
-                    handle_update(message, client_socket)
-                # Perform login handling
-                elif message["action"] == "login":
-                    handle_login(message, client_socket)
+                for message in messages:
+                    # Perform update handling
+                    if message["action"] == "update" and client_socket in logged_clients:
+                        handle_update(message, client_socket)
+                    # Perform login handling
+                    elif message["action"] == "login":
+                        handle_login(message, client_socket)
             except json.JSONDecodeError:
                 print("Error decoding JSON message")
 

@@ -29,8 +29,13 @@ class ServerMessageNotifier:
                 if not data:
                     break
                 try:
-                    message = json.loads(data)
-                    self.notify_listeners(message)
+                    messages = []
+                    for data_item in data:
+                        message = json.loads(data_item)
+                        messages.append(message)
+                        
+                    for message in messages:
+                        self.notify_listeners(message)
                 except json.JSONDecodeError:
                     print("Error decoding JSON message")
         except ConnectionResetError:

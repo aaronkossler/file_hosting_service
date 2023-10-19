@@ -18,15 +18,27 @@ def dump_message(message):
 # Define function to receive the complete message in 1024 byte blocks
 def receive_message(client_socket):
     data = b""
+    messages = []
 
-    # Concatenate data as long as there is data flow
+    # Receive data until the custom delimiter is found
     while True:
         chunk = client_socket.recv(1024)
         if not chunk:
             break
         data += chunk
-        if b"\n" in chunk:
+
+        # Split the received data by the delimiter
+        parts = data.split(b'\n')
+
+        for i in range(len(parts) - 1):
+            messages.append(parts[i])
+
+        if b'\n' in chunk:
+            data = parts[-1]
             break
 
-    # Return decoded data
-    return data.decode()
+    # Process and decode each individual message
+    decoded_messages = [message.decode() for message in messages]
+
+    return decoded_messages
+
