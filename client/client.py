@@ -5,7 +5,6 @@ import socket
 import maskpass
 import threading
 import argparse
-import signal
 from watchdog.observers import Observer
 from components.abstract_message_listener import MessageListener
 from components.event_handler import EventHandler
@@ -145,7 +144,7 @@ class Client(MessageListener):
             self.login()
 
             listen_thread.join()
-        except KeyboardInterrupt:
+        except (KeyboardInterrupt, ConnectionResetError):
             self.shutdown("Closing client...")
 
     # Close client

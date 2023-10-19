@@ -67,7 +67,6 @@ def handle_client(client_socket):
             if not data:
                 break
             try:
-                print(data)
                 messages = []
                 for data_item in data:
                     message = json.loads(data_item)

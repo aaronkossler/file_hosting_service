@@ -38,9 +38,7 @@ class ServerMessageNotifier:
                         self.notify_listeners(message)
                 except json.JSONDecodeError:
                     print("Error decoding JSON message")
-        except ConnectionResetError:
-            print("Server disconnected")
-        except KeyboardInterrupt:
+        except (KeyboardInterrupt, ConnectionResetError):
             observer.stop()
 
     def stop_listening(self):
