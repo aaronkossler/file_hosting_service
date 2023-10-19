@@ -1,2 +1,4 @@
 username,password
-root,root
+anonymous,""
+sar,sar
+sza,sza

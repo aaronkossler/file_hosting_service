@@ -1,5 +1,6 @@
 #!/bin/bash
 
+#Script can be changed to test for other users
 cd client/data
 rm -r ./*
 
