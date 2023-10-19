@@ -7,7 +7,7 @@ File Hosting Service for Distributed Systems at the UPV/EHU, Group tag KT
 3. Check/modify the parameters via the config.json files or the command line parameters (also accessible via python3 client.py –help).
 4. Start the server program first and any clients that want to connect afterwards.
 5. Log in as the client (e.g. with the sar/sar information).
-6. Start synching by adding files to the specified directory.
+6. Start syncing by adding files to the specified directory.
 
 For more details, refer to the chapters listed below.
 
