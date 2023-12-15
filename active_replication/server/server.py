@@ -1,15 +1,14 @@
+import argparse
 import os
-import json
+import sys
 import socket
 from threading import Thread
+import json
 import base64
 import shutil
-import signal
 import pandas as pd
-import argparse
 
-import sys
-sys.path.append('../')
+sys.path.append("../")
 from resources.message_sending import send_message, receive_message
 
 # Import server configuration
@@ -22,18 +21,25 @@ SERVER_HOST = config["server_host"]
 SERVER_PORT = config["server_port"]
 SERVER_DIR = config["server_dir"]
 
-# Define a list to store active client sockets
-active_clients = []
+logged_in_clients = {}
 
-# Define a list to store clients, that are logged in
-logged_clients = {}
+def get_external_ip():
+    try:
+        # Use a dummy socket to get the external IP address
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        external_ip = s.getsockname()[0]
+        s.close()
+        return external_ip
+    except Exception as e:
+        print(f"Error: {e}")
+        return None
 
 def parse_command_line_args():
     global SERVER_HOST, SERVER_PORT, SERVER_DIR
     parser = argparse.ArgumentParser(description="Client replicating Dropbox functionality by syncing files and folders in the background")
     
     # Add command-line arguments to overwrite configuration values
-    parser.add_argument('--server-host', help='Server host address')
     parser.add_argument('--server-port', type=int, help='Server port number')
     parser.add_argument('--debug', action='store_true', help='Decide whether sent messages should be logged for debugging')
     parser.add_argument('--server-dir', help='Server directory path')
@@ -45,9 +51,8 @@ def parse_command_line_args():
     else: 
         os.environ["DEBUG"] = "off"
 
+    SERVER_HOST = get_external_ip()
     # Update the configuration based on the command-line arguments
-    if args.server_host:
-        SERVER_HOST = args.server_host
     if args.server_port:
         SERVER_PORT = args.server_port
     if args.server_dir and os.path.exists(args.server_dir):
@@ -58,41 +63,41 @@ def parse_command_line_args():
         sys.exit(0)
 
 # Main function dedicated to each client
-def handle_client(client_socket):
+def handle_clients():
     try:
-        active_clients.append(client_socket)
         # Listen for message from client
         while True:
-            data = receive_message(client_socket)
-            if not data:
+            messages, sender_address = receive_message(server_socket)
+            print(messages, sender_address)
+            if not messages:
                 break
             try:
+                """
                 messages = []
                 for data_item in data:
                     message = json.loads(data_item)
-                    messages.append(message)
+                    messages.append(message)"""
 
-                for message in messages:
+                for item in messages:
                     # Perform update handling
-                    if message["action"] == "update" and client_socket in logged_clients:
-                        handle_update(message, client_socket)
+                    message = json.loads(item)
+                    if message["action"] == "update" and sender_address in logged_in_clients:
+                        handle_update(message, sender_address)
                     # Perform login handling
                     elif message["action"] == "login":
-                        handle_login(message, client_socket)
+                        handle_login(message, sender_address)
             except json.JSONDecodeError:
                 print("Error decoding JSON message")
 
     except ConnectionResetError:
         print("Client disconnected")
     finally:
-        print(f"{client_socket.getpeername()} disconnected")
-        client_socket.close()
-        active_clients.remove(client_socket)
-        if client_socket in logged_clients:
-            del logged_clients[client_socket]
+        print(f"{sender_address} disconnected")
+        if sender_address in logged_in_clients:
+            del logged_in_clients[sender_address]
 
 # Define what to do on specific client messages
-def handle_update(message, client_socket):
+def handle_update(message, client_address):
     if os.environ["DEBUG"] == "on": 
         print(message["event_type"])
     if message["event_type"] == "modified":
@@ -100,7 +105,7 @@ def handle_update(message, client_socket):
 
         # For the moment, use the same logic as for file creation
         # Handle file creation event
-        server_path = os.path.join(SERVER_DIR, logged_clients[client_socket], message["path"])
+        server_path = os.path.join(SERVER_DIR, logged_in_clients[client_address], message["path"])
 
         # Decode the Base64-encoded data received from the client
         client_data_base64 = message["data"]
@@ -112,7 +117,7 @@ def handle_update(message, client_socket):
 
     elif message["event_type"] == "deleted":
         # Handle file deletion event
-        server_path = os.path.join(SERVER_DIR, logged_clients[client_socket], message["path"])
+        server_path = os.path.join(SERVER_DIR, logged_in_clients[client_address], message["path"])
         if os.path.exists(server_path):
             if message["structure"] == "dir":
                 shutil.rmtree(server_path)
@@ -121,7 +126,7 @@ def handle_update(message, client_socket):
 
     elif message["event_type"] == "created":
         # Handle file creation event
-        server_path = os.path.join(SERVER_DIR, logged_clients[client_socket], message["path"])
+        server_path = os.path.join(SERVER_DIR, logged_in_clients[client_address], message["path"])
 
         if message["structure"] == "dir":
             os.makedirs(server_path)
@@ -136,8 +141,8 @@ def handle_update(message, client_socket):
 
     elif message["event_type"] == "moved":
         # Handle file move/rename event
-        src_server_path = os.path.join(SERVER_DIR, logged_clients[client_socket], message["src_path"])
-        dest_server_path = os.path.join(SERVER_DIR, logged_clients[client_socket], message["dest_path"])
+        src_server_path = os.path.join(SERVER_DIR, logged_in_clients[client_address], message["src_path"])
+        dest_server_path = os.path.join(SERVER_DIR, logged_in_clients[client_address], message["dest_path"])
         if os.path.exists(src_server_path):
             if message["structure"] == "dir":
                 try:
@@ -150,8 +155,15 @@ def handle_update(message, client_socket):
                 except:
                     pass
 
+    reply = {
+        "action": "received",
+        "id": message["id"]
+    }
+
+    send_message(server_socket, reply, client_address)
+
 # Handle client login
-def handle_login(message, client_socket):
+def handle_login(message, client_address):
     if os.environ["DEBUG"] == "on": 
         print(message["action"])
 
@@ -174,11 +186,11 @@ def handle_login(message, client_socket):
         if saved_password == password or pd.isnull(saved_password):
             login_message["result"] = "successful"
             login_message["text"] = "Logged in successfully"
-            logged_clients[client_socket] = username
+            logged_in_clients[client_address] = username
             userpath = os.path.join(SERVER_DIR, username)
             if not os.path.isdir(userpath):
                 os.makedirs(userpath)
-            print(f"Login successful by {client_socket.getpeername()}")
+            print(f"Login successful by {client_address}")
         else:
             login_message["result"] = "failed"
             login_message["text"] = "Password is wrong"
@@ -186,27 +198,8 @@ def handle_login(message, client_socket):
         login_message["result"] = "failed"
         login_message["text"] = "Username does not exist"
 
-    send_message(client_socket, login_message)
+    send_message(server_socket, login_message, client_address)
 
-# If the server is closed, notify clients
-def send_shutdown_message_to_clients():
-    shutdown_message = {
-        "type": "serverMessage",
-        "action": "shutdown"
-    }
-
-    for client_socket in active_clients:
-        send_message(client_socket, shutdown_message)
-        client_socket.close()
-
-# Add function to forward the Ctrl+C event to
-def handle_server_termination(signum, frame):
-    print("Server terminated")
-    send_shutdown_message_to_clients()
-    sys.exit(0)
-
-# Register the signal handler for Ctrl+C
-signal.signal(signal.SIGINT, handle_server_termination)
 
 if __name__ == "__main__":
     # Parse cmd line args
@@ -214,9 +207,9 @@ if __name__ == "__main__":
 
     # Boot server
     try:
-        server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        global server_socket 
+        server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         server_socket.bind((SERVER_HOST, SERVER_PORT))
-        server_socket.listen(5)
         print(f"Server listening on {SERVER_HOST}:{SERVER_PORT}")
     except OSError as e:
         print(f"Error binding to {SERVER_HOST}:{SERVER_PORT}: {e}")
@@ -225,15 +218,6 @@ if __name__ == "__main__":
         print(f"An unexpected error occurred: {e}")
         sys.exit(1)
 
-    # Accept new clients and hand each one over to its own thread
-    try:
-        while True:
-            client_socket, _ = server_socket.accept()
-            print(f"Accepted connection from {client_socket.getpeername()}")
-            client_handler = Thread(target=handle_client, args=(client_socket,))
-            client_handler.daemon = True
-            client_handler.start()
-    except KeyboardInterrupt:
-        pass
+    handle_clients()
 
     print("Server terminated")
