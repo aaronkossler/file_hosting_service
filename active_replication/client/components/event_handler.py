@@ -110,6 +110,13 @@ class EventHandler(FileSystemEventHandler):
     def on_closed(self, event):
         self.on_modified(event)
 
+    # SHUTDOWN logic
+    def on_shutdown(self):
+        message = {
+            "action": "disconnect"
+        }
+        send_message(self.client_socket, message, self.client.get_servers())
+
     # Helper function to read files
     def read_bytes(self, file_path):
         with open(file_path, 'rb') as file:

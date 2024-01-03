@@ -44,12 +44,16 @@ def parse_command_line_args():
         os.environ["DEBUG"] = "off"
 
     # Update the configuration based on the command-line arguments
-    if len(args.server_hosts) != len(args.server_ports):
-        raise ValueError("Number of server IPs does not match the provided number of ports!")
+    if len(args.server_hosts) != 1 and len(args.server_hosts) != len(args.server_ports):
+        raise ValueError("Number of server IPs does not match the provided number of ports! In case you want to connect multiple processes running on the same host, enter the single host and all port numbers.")
     else:
         SERVERS = []
-        for i, host in enumerate(args.server_hosts):
-            SERVERS.append((host, args.server_ports[i]))
+        for i, port in enumerate(args.server_ports):
+            if len(args.server_hosts) > 1:
+                host = args.server_hosts[i]
+            else:
+                host = args.server_hosts[0]
+            SERVERS.append((host, port))
 
     if args.client_dir and os.path.exists(args.client_dir):
         CLIENT_DIR = args.client_dir
@@ -68,7 +72,6 @@ class Client(MessageListener):
         self.event_handler = EventHandler(self)
         self.login_response = False
         self.logged_in = False
-        self.disconnected = False
         self.reply_log = {}
         self.server_timeout = 5 # in seconds
 
@@ -91,7 +94,15 @@ class Client(MessageListener):
             if diff.total_seconds() >= self.server_timeout:
                 for server in msg_data["pending_servers"]:
                     print("Server {} timed out and has been removed from the server list.".format(server))
-                    if server in self.servers: self.servers.remove(server)
+                    if server in self.servers: self.remove_server(server)
+
+    # Add logic to remove server and shutdown, if no servers are left
+    def remove_server(self, removed_server):
+        self.servers.remove(removed_server)
+        if len(self.servers) == 0:
+            self.shutdown("All servers disconnected. Closing client...")
+        else:
+            print("Server {} disconnected. Still enough backups available.".format(removed_server))
 
     # Register 
     def register_reply(self, msg_id, server_address):
@@ -108,9 +119,9 @@ class Client(MessageListener):
     def notify_server_message(self, message, server_address):
         if message["action"] == "received":
             self.register_reply(message["id"], server_address)
-        elif message["action"] == "shutdown" and self.logged_in:
-            self.shutdown("Server disconnected. Closing client...")
-        elif message["action"] == "login" or not self.logged_in:
+        elif message["action"] == "shutdown":
+            self.remove_server(server_address)
+        elif message["action"] == "login":
             self.handle_login_message(message)
 
     # Send a message to the server
@@ -130,10 +141,7 @@ class Client(MessageListener):
                 "password": password
             }
 
-            if not self.disconnected:
-                self.send_message(message)
-            else:
-                self.shutdown("Server disconnected. Aborting login...")
+            self.send_message(message)
 
             # Wait for Server to answer for 10 seconds
             timeout = 10
@@ -142,12 +150,12 @@ class Client(MessageListener):
                 time.sleep(1)
 
             if not self.login_response and not self.logged_in:
-                print("Server is not responding. Please try again.")
+                print("None of the servers are responding. Servers are potentially down. Please try again later or check your internet connection.")
             elif not self.logged_in:
                 self.login_response = False
 
     def handle_login_message(self, message):
-        if message["action"] == "login":
+        if message["action"] == "login" and not self.logged_in:
             print(message["text"])
             self.login_response = True
             if message["result"] == "successful":
@@ -186,6 +194,7 @@ class Client(MessageListener):
     def shutdown(self, message):
         print(message)
         self.message_handler.stop_listening()
+        self.event_handler.on_shutdown()
         self.client_socket.close()
         sys.exit(0)
 

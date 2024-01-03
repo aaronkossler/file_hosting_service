@@ -72,12 +72,6 @@ def handle_clients():
             if not messages:
                 break
             try:
-                """
-                messages = []
-                for data_item in data:
-                    message = json.loads(data_item)
-                    messages.append(message)"""
-
                 for item in messages:
                     # Perform update handling
                     message = json.loads(item)
@@ -86,20 +80,26 @@ def handle_clients():
                     # Perform login handling
                     elif message["action"] == "login":
                         handle_login(message, sender_address)
+                    # Remove client on disconnect
+                    elif message["action"] == "disconnect":
+                        print(f"{sender_address} disconnected")
+                        if sender_address in logged_in_clients:
+                            del logged_in_clients[sender_address]
             except json.JSONDecodeError:
                 print("Error decoding JSON message")
+    except KeyboardInterrupt:
+        message = {
+            "action": "shutdown"
+        }
 
-    except ConnectionResetError:
-        print("Client disconnected")
-    finally:
-        print(f"{sender_address} disconnected")
-        if sender_address in logged_in_clients:
-            del logged_in_clients[sender_address]
+        for client in logged_in_clients.keys():
+            send_message(server_socket, message, client)
 
 # Define what to do on specific client messages
 def handle_update(message, client_address):
     if os.environ["DEBUG"] == "on": 
         print(message["event_type"])
+
     if message["event_type"] == "modified":
         # Handle file modification event with differences maybe to be added (?)
 
