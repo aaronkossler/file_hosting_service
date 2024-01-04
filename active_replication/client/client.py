@@ -171,7 +171,7 @@ class Client(MessageListener):
 
         # start listening for messages
         self.message_handler.add_listener(self)
-        self.message_handler.start_listening(observer)
+        self.message_handler.listen_to_server_messages()
 
         observer.join()
 

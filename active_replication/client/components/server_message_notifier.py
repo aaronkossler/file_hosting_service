@@ -23,7 +23,7 @@ class ServerMessageNotifier:
         for listener in self._listeners:
             listener.notify_server_message(server_message, server_address)
 
-    def start_listening(self, observer):
+    def start_listening(self):
         try:
             while not self._stop_listening.is_set():
                 messages, server_address = receive_message(self.client_socket)
@@ -36,7 +36,7 @@ class ServerMessageNotifier:
                 except json.JSONDecodeError:
                     print("Error decoding JSON message")
         except (KeyboardInterrupt, ConnectionResetError):
-            observer.stop()
+            quit()
 
     def stop_listening(self):
         self._stop_listening.set()
