@@ -20,7 +20,7 @@ class EventHandler(FileSystemEventHandler):
         super().__init__()
 
     def register_and_send(self, message):
-        self.client.register_send_event(datetime.now(), self.message_count)
+        self.client.server_list_manager.register_send_event(datetime.now(), self.message_count)
         message["id"] = self.message_count
         self.message_count += 1
         send_message(self.client_socket, message, self.client.get_servers())

@@ -5,11 +5,11 @@ import socket
 import maskpass
 import threading
 import argparse
-from datetime import datetime
 from watchdog.observers import Observer
 from components.abstract_message_listener import MessageListener
 from components.event_handler import EventHandler
 from components.server_message_notifier import ServerMessageNotifier
+from components.server_list_manager import ServerListManager
 
 import sys
 sys.path.append('../')
@@ -66,68 +66,31 @@ def parse_command_line_args():
 class Client(MessageListener):
     def __init__(self, client_dir, servers):
         self.client_dir = client_dir
-        self.servers = servers
+        self.server_list_manager = ServerListManager(servers)
         self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.message_handler = ServerMessageNotifier(self.client_socket)
         self.event_handler = EventHandler(self)
         self.login_response = False
         self.logged_in = False
         self.reply_log = {}
-        self.server_timeout = 5 # in seconds
 
     # Return current list of servers
     def get_servers(self):
-        return self.servers
-    
-    # Register when a message was sent
-    def register_send_event(self, timestamp, message_id):
-        self.reply_log[message_id] = {
-            "timestamp": timestamp,
-            "pending_servers": self.servers.copy()
-        }
-        print(self.reply_log)
-
-    # Check if any servers did not reply to the message within the specified timeout window
-    def check_server_timeouts(self):
-        for _, msg_data in self.reply_log.items():
-            diff = datetime.now() - msg_data["timestamp"]
-            if diff.total_seconds() >= self.server_timeout:
-                for server in msg_data["pending_servers"]:
-                    print("Server {} timed out and has been removed from the server list.".format(server))
-                    if server in self.servers: self.remove_server(server)
-
-    # Add logic to remove server and shutdown, if no servers are left
-    def remove_server(self, removed_server):
-        self.servers.remove(removed_server)
-        if len(self.servers) == 0:
-            self.shutdown("All servers disconnected. Closing client...")
-        else:
-            print("Server {} disconnected. Still enough backups available.".format(removed_server))
-
-    # Register 
-    def register_reply(self, msg_id, server_address):
-        self.check_server_timeouts()
-        if server_address in self.reply_log[msg_id]["pending_servers"]:
-            self.reply_log[msg_id]["pending_servers"].remove(server_address)
-            print("Reply for message {} received from {}".format(msg_id, server_address))
-        
-        # Remove msg_id from reply_log if all messages have been acknowledged
-        if len(self.reply_log[msg_id]["pending_servers"]) == 0:
-            del self.reply_log[msg_id]
+        return self.server_list_manager.get_servers()
 
     # Handle server messages
     def notify_server_message(self, message, server_address):
         if message["action"] == "received":
-            self.register_reply(message["id"], server_address)
+            self.server_list_manager.register_reply(message["id"], server_address)
         elif message["action"] == "shutdown":
-            self.remove_server(server_address)
+            self.server_list_manager.remove_server(server_address)
         elif message["action"] == "login":
             self.handle_login_message(message)
 
     # Send a message to the server
     def send_message(self, message):
-        self.check_server_timeouts()
-        send_message(self.client_socket, message, self.servers)
+        self.server_list_manager.check_server_timeouts()
+        send_message(self.client_socket, message, self.get_servers())
 
     # Login logic
     def login(self):
