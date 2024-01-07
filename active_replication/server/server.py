@@ -20,7 +20,7 @@ SERVER_HOST = config["server_host"]
 SERVER_PORT = config["server_port"]
 SERVER_DIR = config["server_dir"]
 
-def get_external_ip():
+def get_local_ip():
     try:
         # Use a dummy socket to get the external IP address
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -48,7 +48,7 @@ def parse_command_line_args():
     else: 
         os.environ["DEBUG"] = "off"
 
-    SERVER_HOST = get_external_ip()
+    SERVER_HOST = get_local_ip()
     # Update the configuration based on the command-line arguments
     if args.server_port:
         SERVER_PORT = args.server_port
