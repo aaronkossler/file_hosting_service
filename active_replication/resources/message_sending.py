@@ -3,6 +3,7 @@ import os
 
 # Helper script that defines functions for both sending and receiving messages on client and server side
 
+# Send messages via UDP/IP sockets
 def send_message(socket, message, receiver_address):
     if os.environ["DEBUG"] == "on":
         print("sending:", message)

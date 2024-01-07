@@ -40,9 +40,3 @@ class ServerMessageNotifier:
 
     def stop_listening(self):
         self._stop_listening.set()
-
-    def listen_to_server_messages(self):
-        # Start listening in a separate thread
-        listening_thread = threading.Thread(target=self.start_listening)
-        listening_thread.daemon = True 
-        listening_thread.start()

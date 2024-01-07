@@ -21,8 +21,6 @@ with open('client_config.json', 'r') as config_file:
     config = json.load(config_file)
 
 # Use the loaded configuration
-#SERVER_HOST = config["server_host"]
-#SERVER_PORT = config["server_port"]
 CLIENT_DIR = config["client_dir"]
 
 def parse_command_line_args():
@@ -66,13 +64,16 @@ def parse_command_line_args():
 class Client(MessageListener):
     def __init__(self, client_dir, servers):
         self.client_dir = client_dir
-        self.server_list_manager = ServerListManager(servers)
+        self.server_list_manager = ServerListManager(servers, self)
         self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.message_handler = ServerMessageNotifier(self.client_socket)
+        self.message_handler.add_listener(self)
         self.event_handler = EventHandler(self)
         self.login_response = False
         self.logged_in = False
         self.reply_log = {}
+        self.observer = Observer()
+        self.observer.schedule(self.event_handler, path=self.client_dir, recursive=True)
 
     # Return current list of servers
     def get_servers(self):
@@ -119,37 +120,28 @@ class Client(MessageListener):
 
     def handle_login_message(self, message):
         if message["action"] == "login" and not self.logged_in:
-            print(message["text"])
+            print(message["text"] + ". Your folder is now being synced with the servers.")
             self.login_response = True
             if message["result"] == "successful":
                 self.logged_in = True
         elif message["action"] == "shutdown":
             self.disconnected = True
 
-    # Start observing to events
-    def start(self):
-        observer = Observer()
-        observer.schedule(self.event_handler, path=self.client_dir, recursive=True)
-        observer.start()
-
-        # start listening for messages
-        self.message_handler.add_listener(self)
-        self.message_handler.listen_to_server_messages()
-
-        observer.join()
-
     # Run client
     def run(self):
         try:
-            # Start listening to events and server messages in a separate thread
-            listen_thread = threading.Thread(target=self.start)
+            # Start listening to server messages in a separate thread
+            listen_thread = threading.Thread(target=self.message_handler.start_listening)
             listen_thread.daemon = True
             listen_thread.start()
 
             # Login
             self.login()
 
+            # After successful login, start tracking changes in specified folder
+            self.observer.start()
             listen_thread.join()
+            self.observer.join()
         except (KeyboardInterrupt, ConnectionResetError):
             self.shutdown("Closing client...")
 
@@ -158,8 +150,12 @@ class Client(MessageListener):
         print(message)
         self.message_handler.stop_listening()
         self.event_handler.on_shutdown()
-        self.client_socket.close()
-        sys.exit(0)
+        try:
+            self.observer.stop()
+            self.observer.join()
+        except:
+            pass
+        quit()
 
 if __name__ == "__main__":
     # Parse cmd line args

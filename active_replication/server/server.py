@@ -2,7 +2,6 @@ import argparse
 import os
 import sys
 import socket
-from threading import Thread
 import json
 import base64
 import shutil
@@ -21,16 +20,14 @@ SERVER_HOST = config["server_host"]
 SERVER_PORT = config["server_port"]
 SERVER_DIR = config["server_dir"]
 
-logged_in_clients = {}
-
 def get_external_ip():
     try:
         # Use a dummy socket to get the external IP address
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.connect(("8.8.8.8", 80))
-        external_ip = s.getsockname()[0]
+        local_ip = s.getsockname()[0]
         s.close()
-        return external_ip
+        return local_ip
     except Exception as e:
         print(f"Error: {e}")
         return None
@@ -62,143 +59,150 @@ def parse_command_line_args():
         print("The server directory does not exist.")
         sys.exit(0)
 
-# Main function dedicated to each client
-def handle_clients():
-    try:
-        # Listen for message from client
-        while True:
-            messages, sender_address = receive_message(server_socket)
-            print(messages, sender_address)
-            if not messages:
-                break
-            try:
-                for item in messages:
-                    # Perform update handling
-                    message = json.loads(item)
-                    if message["action"] == "update" and sender_address in logged_in_clients:
-                        handle_update(message, sender_address)
-                    # Perform login handling
-                    elif message["action"] == "login":
-                        handle_login(message, sender_address)
-                    # Remove client on disconnect
-                    elif message["action"] == "disconnect":
-                        print(f"{sender_address} disconnected")
-                        if sender_address in logged_in_clients:
-                            del logged_in_clients[sender_address]
-            except json.JSONDecodeError:
-                print("Error decoding JSON message")
-    except KeyboardInterrupt:
-        message = {
-            "action": "shutdown"
-        }
+class Server:
+    def __init__(self, host, port):
+        self.logged_in_clients = {}
+        self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.server_socket.bind((host, port))
 
-        for client in logged_in_clients.keys():
-            send_message(server_socket, message, client)
+    # Main function dedicated to each client
+    def handle_clients(self):
+        try:
+            # Listen for message from client
+            while True:
+                messages, sender_address = receive_message(self.server_socket)
+                if os.environ["DEBUG"] == "on":
+                    print(messages, sender_address)
+                if not messages:
+                    break
+                try:
+                    for item in messages:
+                        # Perform update handling
+                        message = json.loads(item)
+                        if message["action"] == "update" and sender_address in self.logged_in_clients:
+                            self.handle_update(message, sender_address)
+                        # Perform login handling
+                        elif message["action"] == "login":
+                            self.handle_login(message, sender_address)
+                        # Remove client on disconnect
+                        elif message["action"] == "disconnect":
+                            print(f"{sender_address} disconnected")
+                            if sender_address in self.logged_in_clients:
+                                del self.logged_in_clients[sender_address]
+                except json.JSONDecodeError:
+                    print("Error decoding JSON message")
+        except KeyboardInterrupt:
+            message = {
+                "action": "shutdown"
+            }
 
-# Define what to do on specific client messages
-def handle_update(message, client_address):
-    if os.environ["DEBUG"] == "on": 
-        print(message["event_type"])
+            for client in self.logged_in_clients.keys():
+                send_message(self.server_socket, message, client)
 
-    if message["event_type"] == "modified":
-        # Handle file modification event with differences maybe to be added (?)
+    # Define what to do on specific client messages
+    def handle_update(self, message, client_address):
+        if os.environ["DEBUG"] == "on": 
+            print(message["event_type"])
 
-        # For the moment, use the same logic as for file creation
-        # Handle file creation event
-        server_path = os.path.join(SERVER_DIR, logged_in_clients[client_address], message["path"])
+        if message["event_type"] == "modified":
+            # Handle file modification event with differences maybe to be added (?)
 
-        # Decode the Base64-encoded data received from the client
-        client_data_base64 = message["data"]
-        client_data_bytes = base64.b64decode(client_data_base64)
+            # For the moment, use the same logic as for file creation
+            # Handle file creation event
+            server_path = os.path.join(SERVER_DIR, self.logged_in_clients[client_address], message["path"])
 
-        # Write the client data to the server file
-        with open(server_path, 'wb') as server_file:
-            server_file.write(client_data_bytes)
-
-    elif message["event_type"] == "deleted":
-        # Handle file deletion event
-        server_path = os.path.join(SERVER_DIR, logged_in_clients[client_address], message["path"])
-        if os.path.exists(server_path):
-            if message["structure"] == "dir":
-                shutil.rmtree(server_path)
-            else:
-                os.remove(server_path)
-
-    elif message["event_type"] == "created":
-        # Handle file creation event
-        server_path = os.path.join(SERVER_DIR, logged_in_clients[client_address], message["path"])
-
-        if message["structure"] == "dir":
-            os.makedirs(server_path)
-        else:
             # Decode the Base64-encoded data received from the client
             client_data_base64 = message["data"]
             client_data_bytes = base64.b64decode(client_data_base64)
 
-            # Write the decoded data to the file on the server
+            # Write the client data to the server file
             with open(server_path, 'wb') as server_file:
                 server_file.write(client_data_bytes)
 
-    elif message["event_type"] == "moved":
-        # Handle file move/rename event
-        src_server_path = os.path.join(SERVER_DIR, logged_in_clients[client_address], message["src_path"])
-        dest_server_path = os.path.join(SERVER_DIR, logged_in_clients[client_address], message["dest_path"])
-        if os.path.exists(src_server_path):
+        elif message["event_type"] == "deleted":
+            # Handle file deletion event
+            server_path = os.path.join(SERVER_DIR, self.logged_in_clients[client_address], message["path"])
+            if os.path.exists(server_path):
+                if message["structure"] == "dir":
+                    shutil.rmtree(server_path)
+                else:
+                    os.remove(server_path)
+
+        elif message["event_type"] == "created":
+            # Handle file creation event
+            server_path = os.path.join(SERVER_DIR, self.logged_in_clients[client_address], message["path"])
+
             if message["structure"] == "dir":
-                try:
-                    shutil.move(src_server_path, dest_server_path)
-                except:
-                    pass
+                os.makedirs(server_path)
             else:
-                try:
-                    os.rename(src_server_path, dest_server_path)
-                except:
-                    pass
+                # Decode the Base64-encoded data received from the client
+                client_data_base64 = message["data"]
+                client_data_bytes = base64.b64decode(client_data_base64)
 
-    reply = {
-        "action": "received",
-        "id": message["id"]
-    }
+                # Write the decoded data to the file on the server
+                with open(server_path, 'wb') as server_file:
+                    server_file.write(client_data_bytes)
 
-    send_message(server_socket, reply, client_address)
+        elif message["event_type"] == "moved":
+            # Handle file move/rename event
+            src_server_path = os.path.join(SERVER_DIR, self.logged_in_clients[client_address], message["src_path"])
+            dest_server_path = os.path.join(SERVER_DIR, self.logged_in_clients[client_address], message["dest_path"])
+            if os.path.exists(src_server_path):
+                if message["structure"] == "dir":
+                    try:
+                        shutil.move(src_server_path, dest_server_path)
+                    except:
+                        pass
+                else:
+                    try:
+                        os.rename(src_server_path, dest_server_path)
+                    except:
+                        pass
 
-# Handle client login
-def handle_login(message, client_address):
-    if os.environ["DEBUG"] == "on": 
-        print(message["action"])
+        reply = {
+            "action": "received",
+            "id": message["id"]
+        }
 
-    # Read users "database"
-    users = pd.read_csv("users.csv")
+        send_message(self.server_socket, reply, client_address)
 
-    # Read credentials from message
-    username = message["username"]
-    password = message["password"]
+    # Handle client login
+    def handle_login(self, message, client_address):
+        if os.environ["DEBUG"] == "on": 
+            print(message["action"])
 
-    # Default login response
-    login_message = {
-        "type": "serverMessage",
-        "action": "login"
-    }
+        # Read users "database"
+        users = pd.read_csv("users.csv")
 
-    # Verify Credentials
-    if username in users["username"].unique():
-        saved_password = users[users["username"] == username]["password"].item()
-        if saved_password == password or pd.isnull(saved_password):
-            login_message["result"] = "successful"
-            login_message["text"] = "Logged in successfully"
-            logged_in_clients[client_address] = username
-            userpath = os.path.join(SERVER_DIR, username)
-            if not os.path.isdir(userpath):
-                os.makedirs(userpath)
-            print(f"Login successful by {client_address}")
+        # Read credentials from message
+        username = message["username"]
+        password = message["password"]
+
+        # Default login response
+        login_message = {
+            "type": "serverMessage",
+            "action": "login"
+        }
+
+        # Verify Credentials
+        if username in users["username"].unique():
+            saved_password = users[users["username"] == username]["password"].item()
+            if saved_password == password or pd.isnull(saved_password):
+                login_message["result"] = "successful"
+                login_message["text"] = "Logged in successfully"
+                self.logged_in_clients[client_address] = username
+                userpath = os.path.join(SERVER_DIR, username)
+                if not os.path.isdir(userpath):
+                    os.makedirs(userpath)
+                print(f"Login successful by {client_address}")
+            else:
+                login_message["result"] = "failed"
+                login_message["text"] = "Password is wrong"
         else:
             login_message["result"] = "failed"
-            login_message["text"] = "Password is wrong"
-    else:
-        login_message["result"] = "failed"
-        login_message["text"] = "Username does not exist"
+            login_message["text"] = "Username does not exist"
 
-    send_message(server_socket, login_message, client_address)
+        send_message(self.server_socket, login_message, client_address)
 
 
 if __name__ == "__main__":
@@ -207,9 +211,7 @@ if __name__ == "__main__":
 
     # Boot server
     try:
-        global server_socket 
-        server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        server_socket.bind((SERVER_HOST, SERVER_PORT))
+        server = Server(SERVER_HOST, SERVER_PORT)
         print(f"Server listening on {SERVER_HOST}:{SERVER_PORT}")
     except OSError as e:
         print(f"Error binding to {SERVER_HOST}:{SERVER_PORT}: {e}")
@@ -218,6 +220,6 @@ if __name__ == "__main__":
         print(f"An unexpected error occurred: {e}")
         sys.exit(1)
 
-    handle_clients()
+    server.handle_clients()
 
     print("Server terminated")

@@ -1,8 +1,10 @@
 from datetime import datetime
+import os
 
 # Class for keeping the server list up to date with active replication
 class ServerListManager:
-    def __init__(self, servers):
+    def __init__(self, servers, client):
+        self.client = client
         self.servers = servers
         self.reply_log = {}
         self.server_timeout = 5 # in seconds
@@ -16,7 +18,8 @@ class ServerListManager:
             "timestamp": timestamp,
             "pending_servers": self.servers.copy()
         }
-        print(self.reply_log)
+        if os.environ["DEBUG"] == "on":
+            print(self.reply_log)
 
     # Check if any servers did not reply to the message within the specified timeout window
     def check_server_timeouts(self):
@@ -31,7 +34,7 @@ class ServerListManager:
     def remove_server(self, removed_server):
         self.servers.remove(removed_server)
         if len(self.servers) == 0:
-            self.shutdown("All servers disconnected. Closing client...")
+            self.client.shutdown("All servers disconnected. Closing client...")
         else:
             print("Server {} disconnected. Still enough backups available.".format(removed_server))
 
@@ -40,7 +43,8 @@ class ServerListManager:
         self.check_server_timeouts()
         if server_address in self.reply_log[msg_id]["pending_servers"]:
             self.reply_log[msg_id]["pending_servers"].remove(server_address)
-            print("Reply for message {} received from {}".format(msg_id, server_address))
+            if os.environ["DEBUG"] == "on": 
+                print("Reply for message {} received from {}".format(msg_id, server_address))
         
         # Remove msg_id from reply_log if all messages have been acknowledged
         if len(self.reply_log[msg_id]["pending_servers"]) == 0:
