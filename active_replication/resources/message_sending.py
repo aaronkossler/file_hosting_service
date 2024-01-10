@@ -11,7 +11,7 @@ def send_message(socket, message, receiver_address):
     message_json = dump_message(message)
     
     # Send the message to the server
-    for chunk in split_into_chunks(message_json, 65536):
+    for chunk in split_into_chunks(message_json, 1024):
         if type(receiver_address) == list:
             for receiver in receiver_address:
                 socket.sendto(chunk.encode(), receiver)
@@ -27,7 +27,7 @@ def split_into_chunks(data, chunk_size):
 
 # Define function to receive the complete message
 def receive_message(socket):
-    data, sender_address = socket.recvfrom(65536)
+    data, sender_address = socket.recvfrom(1024)
 
     # Process and decode each individual message
     decoded_messages = [message.decode() for message in data.split(b'\n') if message]
